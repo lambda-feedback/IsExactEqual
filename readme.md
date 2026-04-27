@@ -1,96 +1,152 @@
-# Evaluation Function Template Repository
+# isExactEqual
 
-This template repository contains the boilerplate code needed in order to create an AWS Lambda function that can be written by any tutor to grade a response area in any way they like.
+[![Request Production Deploy](https://img.shields.io/badge/Request-Production_Deploy-2ea44f?style=for-the-badge)](https://github.com/lambda-feedback/IsExactEqual/issues/new?template=release-request.yml)
 
-This version is specifically for python, however the ultimate goal is to make similar boilerplate repositories in any language, allowing tutors the freedom to code in what they feel most comfortable with.
+An evaluation function that checks exact equality between a student response and the correct answer. Both inputs are cast to a specified type before comparison using Python's `==` operator. The function is deployed on the [lambda-feedback](https://github.com/lambda-feedback) platform.
 
 ## Table of Contents
-- [Evaluation Function Template Repository](#evaluation-function-template-repository)
+- [isExactEqual](#isexactequal)
   - [Table of Contents](#table-of-contents)
   - [Repository Structure](#repository-structure)
   - [Usage](#usage)
-    - [Getting Started](#getting-started)
+    - [Parameters](#parameters)
+    - [Examples](#examples)
   - [How it works](#how-it-works)
     - [Docker & Amazon Web Services (AWS)](#docker--amazon-web-services-aws)
     - [Middleware Functions](#middleware-functions)
     - [GitHub Actions](#github-actions)
+  - [Documentation](#documentation)
   - [Pre-requisites](#pre-requisites)
   - [Contact](#contact)
 
 ## Repository Structure
 
-```bash
+```
 app/
-    __init__.py
-    evaluation.py # Script containing the main evaluation_function
-    docs.md # Documentation page for this function (required)
-    evaluation_tests.py # Unittests for the main evaluation_function
-    requirements.txt # list of packages needed for algorithm.py
-    Dockerfile # for building whole image to deploy to AWS
+    evaluation.py           # Main evaluation_function
+    evaluation_tests.py     # Unit tests
+    schema.json             # JSON schema for input validation
+    requirements.txt        # Python dependencies
+    Dockerfile              # Container image for AWS Lambda
+    docs/
+        user.md             # End-user documentation
+        dev.md              # Developer reference
 
 .github/
     workflows/
-        test-and-deploy.yml # Testing and deployment pipeline
+        test-lint.yml           # Run tests and linting on pull requests
+        staging-deploy.yml      # Deploy to staging on push to main
+        production-deploy.yml   # Deploy to production
 
-config.json # Specify the name of the evaluation function in this file
+config.json     # Evaluation function name
 .gitignore
 ```
 
 ## Usage
 
-### Getting Started
+Send a POST request to the deployed function endpoint with the following JSON body.
 
-1. Clone this repository
-2. Change the name of the evaluation function in `config.json`
-3. The name must be unique. To view existing grading functions, go to:
+### Parameters
 
-   - [Staging API Gateway Integrations](https://eu-west-2.console.aws.amazon.com/apigateway/main/develop/integrations/attach?api=c1o0u8se7b&region=eu-west-2&routes=0xsoy4q)
-   - [Production API Gateway Integrations](https://eu-west-2.console.aws.amazon.com/apigateway/main/develop/integrations/attach?api=cttolq2oph&integration=qpbgva8&region=eu-west-2&routes=0xsoy4q)
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `response` | any | Yes | The student's submitted response |
+| `answer` | any | Yes | The correct answer |
+| `params.type` | string | Yes | Cast type for both inputs before comparison. One of: `"int"`, `"float"`, `"str"`, `"dict"` |
+| `params.display_submission_count` | boolean | No | If `true`, includes a submission count message in the feedback |
+| `params.submission_context.submissions_per_student_per_response_area` | integer | No | Number of previously processed submissions for this student and response area |
 
-4. Merge commits into the default branch
-   - This will trigger the `test-and-deploy.yml` workflow, which will build the docker image, push it to a shared ECR repository, then call the backend `grading-function/ensure` route to build the necessary infrastructure to make the function available from the client app.
+### Examples
 
-5. You are now ready to start developing your function:
-   
-   - Edit the `app/evaluation.py` file, which ultimately gets called when the function is given the `eval` command
-   - Edit the `app/evaluation_tests.py` file to add tests which get run:
-       - Every time you commit to this repo, before the image is built and deployed 
-       - Whenever the `healthcheck` command is supplied to the deployed function
-   - Edit the `app/docs.md` file to reflect your changes. This file is baked into the function's image, and is made available using the `docs` command. This feature is used to display this function's documentation on our [Documentation](https://lambda-feedback.github.io/Documentation/) website once it's been hooked up!
+**Simple string comparison:**
+```json
+{
+  "response": "hydrophobic",
+  "answer": "hydrophobic",
+  "params": {
+    "type": "str"
+  }
+}
+```
+```json
+{
+  "is_correct": true
+}
+```
+
+**Integer comparison:**
+```json
+{
+  "response": "45",
+  "answer": "45",
+  "params": {
+    "type": "int"
+  }
+}
+```
+```json
+{
+  "is_correct": true
+}
+```
+
+**With submission count feedback:**
+```json
+{
+  "response": "1",
+  "answer": "1",
+  "params": {
+    "type": "int",
+    "display_submission_count": true,
+    "submission_context": {
+      "submissions_per_student_per_response_area": 2
+    }
+  }
+}
+```
+```json
+{
+  "is_correct": true,
+  "feedback": "You have submitted 3 responses."
+}
+```
 
 ---
 
 ## How it works
 
-The function is built on top of a custom base layer, [BaseEvaluationFunctionLayer](https://github.com/lambda-feedback/BaseEvalutionFunctionLayer), which tools, tests and schema checking relevant to all evaluation functions.
+The function is built on top of a custom base layer, [BaseEvaluationFunctionLayer](https://github.com/lambda-feedback/BaseEvalutionFunctionLayer), which provides tooling, testing helpers, and schema checking common to all evaluation functions.
 
 ### Docker & Amazon Web Services (AWS)
 
-The grading scripts are hosted AWS Lambda, using containers to run a docker image of the app. Docker is a popular tool in software development that allows programs to be hosted on any machine by bundling all its requirements and dependencies into a single file called an **image**.
-
-Images are run within **containers** on AWS, which give us a lot of flexibility over what programming language and packages/libraries can be used. For more information on Docker, read this [introduction to containerisation](https://www.freecodecamp.org/news/a-beginner-friendly-introduction-to-containers-vms-and-docker-79a9e3e119b/). To learn more about AWS Lambda, click [here](https://geekflare.com/aws-lambda-for-beginners/).
+The evaluation function is hosted on AWS Lambda and packaged as a Docker container. Docker bundles the function and all its dependencies into a single image, which AWS runs on demand inside a container. For background reading, see this [introduction to containerisation](https://www.freecodecamp.org/news/a-beginner-friendly-introduction-to-containers-vms-and-docker-79a9e3e119b/) and the [AWS Lambda documentation](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html).
 
 ### Middleware Functions
-In order to run the algorithm and schema on AWS Lambda, some middleware functions have been provided to handle, validate and return the data so all you need to worry about is the evaluation script and testing.
 
-The code needed to build the image using all the middleware functions are available in the [BaseEvaluationFunctionLayer](https://github.com/lambda-feedback/BaseEvalutionFunctionLayer) repository.
+Middleware provided by [BaseEvaluationFunctionLayer](https://github.com/lambda-feedback/BaseEvalutionFunctionLayer) handles request validation, error formatting, and response serialisation. The `evaluation.py` file only needs to implement the core comparison logic.
 
 ### GitHub Actions
-Whenever a commit is made to the GitHub repository, the new code will go through a pipeline, where it will be tested for syntax errors and code coverage. The pipeline used is called **GitHub Actions** and the scripts for these can be found in `.github/workflows/`.
 
-On top of that, when starting a new evaluation function, you will have to complete a set of unit test scripts, which not only make sure your code is reliable, but also helps you to build a _specification_ for how the code should function before you start programming.
+Three pipelines are configured in `.github/workflows/`:
 
-Once the code passes all these tests, it will then be uploaded to AWS and will be deployed and ready to go in only a few minutes.
+- **`test-lint.yml`** — runs on every pull request: executes the unit test suite and linting via `flake8`.
+- **`staging-deploy.yml`** — runs on every push to `main`: re-runs tests, then builds the Docker image, pushes it to the shared ECR repository, and deploys to the staging environment.
+- **`production-deploy.yml`** — promotes a tested build to the production environment.
+
+## Documentation
+
+- [`app/docs/user.md`](app/docs/user.md) — end-user guide explaining inputs and parameters
+- [`app/docs/dev.md`](app/docs/dev.md) — developer reference with detailed input/output specs and examples
 
 ## Pre-requisites
-Although all programming can be done through the GitHub interface, it is recommended you do this locally on your machine. To do this, you must have installed:
 
-- Python 3.8 or higher.
+To develop and test locally:
 
-- GitHub Desktop or the `git` CLI.
-
-- A code editor such as Atom, VS Code, or Sublime.
-
-Copy this template over by clicking **Use this template** button found in the repository on GitHub. Save it to the `lambda-feedback` Organisation.
+- Python 3.8 or higher
+- Docker
+- `git` CLI or GitHub Desktop
+- A code editor (VS Code, PyCharm, etc.)
 
 ## Contact
+
+For questions or issues, open a GitHub issue or visit the [lambda-feedback organisation](https://github.com/lambda-feedback).
