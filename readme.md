@@ -142,7 +142,7 @@ Three pipelines are configured in `.github/workflows/`:
 
 To develop and test locally:
 
-- Python 3.8 or higher
+- Python 3.12 or higher
 - Docker
 - `git` CLI or GitHub Desktop
 - A code editor (VS Code, PyCharm, etc.)
